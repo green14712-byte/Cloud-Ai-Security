@@ -60,7 +60,7 @@ try:
             except ClientError as e:
                 print(f"[{region}] AWS 오류:", e)
 
-        # 10초 대기
+        # 5초 대기
         time.sleep(5)
 
 except KeyboardInterrupt:
