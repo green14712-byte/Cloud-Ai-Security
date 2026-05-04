@@ -1,13 +1,21 @@
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from datetime import datetime
+import ipaddress
+
+
+def is_external_ip(ip):
+    if not ip:
+        return 0
+
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+        return 0 if ip_obj.is_private else 1
+    except ValueError:
+        return 0
 
 
 def preprocess(events):
-    """
-    DB 또는 수집기에서 전달된 이벤트 리스트를 받아
-    AI 입력용 숫자 feature로 변환 후 정규화한다.
-    """
     features = []
 
     for event in events:
@@ -16,7 +24,7 @@ def preprocess(events):
         try:
             event_time = datetime.fromisoformat(event_time_str)
             hour = event_time.hour
-        except:
+        except Exception:
             hour = 0
 
         dangerous_events = {
@@ -26,6 +34,9 @@ def preprocess(events):
             "DetachUserPolicy",
             "TerminateInstances",
             "AttachUserPolicy",
+            "PutUserPolicy",
+            "DeleteUserPolicy",
+            "CreateAccessKey",
             "AuthorizeSecurityGroupIngress"
         }
 
@@ -35,16 +46,19 @@ def preprocess(events):
         is_error = 1 if event.get("ErrorCode") else 0
         is_night = 1 if hour <= 6 else 0
 
-        # root 또는 숨김 처리 계정은 고위험으로 보기 위한 단순 feature
         actor = event.get("Actor")
         is_root = 1 if actor in ["root", "HIDDEN_DUE_TO_SECURITY_REASONS"] else 0
+
+        source_ip = event.get("SourceIP")
+        external_ip = is_external_ip(source_ip)
 
         features.append({
             "hour": hour,
             "is_dangerous": is_dangerous,
             "is_error": is_error,
             "is_night": is_night,
-            "is_root": is_root
+            "is_root": is_root,
+            "is_external_ip": external_ip
         })
 
     df = pd.DataFrame(features)
