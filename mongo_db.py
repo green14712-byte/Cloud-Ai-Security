@@ -1,6 +1,7 @@
 from datetime import datetime
 import os
 
+import numpy as np
 from dotenv import load_dotenv
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from pymongo.errors import DuplicateKeyError
@@ -17,6 +18,28 @@ if not MONGO_URI:
 client = MongoClient(MONGO_URI)
 db = client[MONGO_DB_NAME]
 logs_collection = db[MONGO_COLLECTION_NAME]
+
+
+def to_mongo_safe(value):
+    """
+    MongoDB가 저장할 수 없는 numpy 타입을 Python 기본 타입으로 변환한다.
+    """
+    if isinstance(value, np.bool_):
+        return bool(value)
+
+    if isinstance(value, np.integer):
+        return int(value)
+
+    if isinstance(value, np.floating):
+        return float(value)
+
+    if isinstance(value, dict):
+        return {key: to_mongo_safe(val) for key, val in value.items()}
+
+    if isinstance(value, list):
+        return [to_mongo_safe(item) for item in value]
+
+    return value
 
 
 def init_mongo():
@@ -47,6 +70,8 @@ def save_logs_to_mongo(events):
     for event in events:
         doc = dict(event)
         doc["CollectedAt"] = datetime.now().isoformat()
+
+        doc = to_mongo_safe(doc)
 
         try:
             result = logs_collection.update_one(
@@ -79,14 +104,20 @@ def save_or_update_analysis(event_id, ai_result=None, risk=None):
     }
 
     if ai_result is not None:
+        ai_result = to_mongo_safe(ai_result)
+
         update_data["AIResult"] = ai_result
         update_data["AIStatus"] = "ANOMALY" if ai_result.get("is_anomaly") else "NORMAL"
         update_data["AIScore"] = ai_result.get("score")
 
     if risk is not None:
+        risk = to_mongo_safe(risk)
+
         update_data["RiskScore"] = risk.get("risk_score")
         update_data["RiskLevel"] = risk.get("risk_level")
         update_data["RiskReasons"] = risk.get("reasons")
+
+    update_data = to_mongo_safe(update_data)
 
     logs_collection.update_one(
         {"EventId": event_id},

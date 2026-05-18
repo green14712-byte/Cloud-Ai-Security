@@ -123,13 +123,28 @@ while True:
         for item in ip_results:
             if item["risk_level"] in ["MEDIUM", "HIGH", "CRITICAL"]:
                 printed = True
+
                 print("━━━━━━━━━━━━━━━━━━━━")
-                print(f"IP          : {item['SourceIP']}")
-                print(f"전체 이벤트 : {item['total_count']}회")
-                print(f"위험 이벤트 : {item['dangerous_count']}회")
-                print(f"위험도      : {item['risk_level']}")
-                print(f"이유        : {', '.join(item['reason'])}")
-                print(f"이벤트 목록 : {', '.join(item['events'])}")
+                print(f"IP              : {item['SourceIP']}")
+                print(f"전체 이벤트      : {item['total_count']}회")
+                print(f"평균 위험도      : {item['avg_risk_score']}점")
+                print(f"최대 위험도      : {item['max_risk_score']}점")
+                print(f"최종 위험도      : {item['risk_level']} ({item['final_risk_score']}점)")
+                print(f"HIGH 이벤트      : {item['high_count']}회")
+                print(f"CRITICAL 이벤트  : {item['critical_count']}회")
+                print(f"정상 IP 활동     : {item['trusted_count']}회")
+
+                if item.get("reason"):
+                    print(f"판단 근거        : {', '.join(item['reason'])}")
+                else:
+                    print("판단 근거        : -")
+
+                print(f"이벤트 목록      : {', '.join(item['events'])}")
+
+                if item.get("event_reasons"):
+                    print("대표 이벤트 근거 :")
+                    for reason in item["event_reasons"]:
+                        print(f" - {reason}")
 
         if not printed:
             print("반복 위험 IP 없음")
