@@ -1,7 +1,9 @@
 .env
-*.pem
+.vscode/
 __pycache__/
 *.pyc
+*.pem
 logs.db
+*.db
 iforest_model.pkl
 accumulated_data.json
