@@ -31,6 +31,18 @@ def format_risk(log):
     return f"{level} ({score}점)"
 
 
+def format_response_actions(log):
+    actions = log.get("ResponseActions") or []
+    if not actions:
+        return "대응 전"
+
+    summary = []
+    for action in actions:
+        result = action.get("result", {})
+        summary.append(f"{action.get('action_type')}:{result.get('status')}")
+    return ", ".join(summary)
+
+
 def print_log(log, index):
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print(f"[{index}]")
@@ -43,6 +55,7 @@ def print_log(log, index):
     print(f"🔐 정책       : {format_policy(log.get('PolicyArn'))}")
     print(f"🤖 AI 결과    : {format_ai(log)}")
     print(f"🔥 위험도     : {format_risk(log)}")
+    print(f"🛡 자동 대응  : {format_response_actions(log)}")
 
     reasons = log.get("RiskReasons")
     if reasons:
