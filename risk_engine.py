@@ -88,6 +88,7 @@ HIGH_RISK_EVENTS = {
     "StopLogging",
     "DeleteTrail",
     "PutBucketPolicy",
+    "PutBucketAcl",
     "DeleteBucket",
 }
 

@@ -7,6 +7,7 @@ from mongo_db import (
     init_mongo,
     save_logs_to_mongo,
     save_or_update_analysis,
+    save_response_actions,
     count_logs as count_mongo_logs,
     load_recent_logs as load_recent_mongo_logs
 )
@@ -22,6 +23,7 @@ from preprocessor import preprocess
 from detector import detect_anomaly
 from ip_tracker import analyze_ip_activity
 from risk_engine import calculate_risk
+from auto_responder import apply_response, AUTO_RESPONSE_DRY_RUN
 
 
 # 프로그램 시작 시 DB 준비
@@ -94,6 +96,10 @@ while True:
                 risk=risk
             )
 
+            # 9. 위험도 결과를 기반으로 자동 대응 정책 적용
+            response_actions = apply_response(event, risk, ai_result)
+            save_response_actions(event.get("EventId"), response_actions)
+
             print("━━━━━━━━━━━━━━━━━━━━")
             print(f"[{i}]")
             print(f"🕒 시간       : {event.get('EventTime')}")
@@ -106,6 +112,10 @@ while True:
             print(f"📊 AI 점수    : {ai_score}")
             print(f"🔥 위험도     : {risk['risk_level']} ({risk['risk_score']}점)")
             print(f"📝 판단 근거  : {', '.join(risk['reasons'])}")
+            print(f"🛡 자동 대응  : {'DRY_RUN' if AUTO_RESPONSE_DRY_RUN else 'LIVE'} / {len(response_actions)}건")
+            for action in response_actions:
+                result = action.get("result", {})
+                print(f"   - {action.get('action_type')}: {result.get('status')} ({result.get('message')})")
 
         print("━━━━━━━━━━━━━━━━━━━━")
 

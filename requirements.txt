@@ -1,0 +1,8 @@
+boto3
+botocore
+pymongo
+python-dotenv
+pandas
+scikit-learn
+joblib
+numpy

@@ -41,7 +41,10 @@ def init_db():
         "ToPort": "TEXT",
         "IpProtocol": "TEXT",
         "InstanceIds": "TEXT",
-        "SourceIP": "TEXT"
+        "SourceIP": "TEXT",
+        "BucketName": "TEXT",
+        "TrailName": "TEXT",
+        "SecurityGroupRuleId": "TEXT"
     }
 
     for column_name, column_type in extra_columns.items():
@@ -67,8 +70,9 @@ def save_logs_to_db(events):
             EventId, EventName, EventTime, Actor, TargetUser,
             PolicyArn, Region, EventSource, ErrorCode,
             AccessKeyId, GroupId, CidrIp, FromPort, ToPort,
-            IpProtocol, InstanceIds, SourceIP
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            IpProtocol, InstanceIds, SourceIP,
+            BucketName, TrailName, SecurityGroupRuleId
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             event.get("EventId"),
             event.get("EventName"),
@@ -86,7 +90,10 @@ def save_logs_to_db(events):
             event.get("ToPort"),
             event.get("IpProtocol"),
             event.get("InstanceIds"),
-            event.get("SourceIP")
+            event.get("SourceIP"),
+            event.get("BucketName"),
+            event.get("TrailName"),
+            event.get("SecurityGroupRuleId")
         ))
 
         if cursor.rowcount == 1:

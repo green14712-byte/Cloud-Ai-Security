@@ -37,7 +37,13 @@ def preprocess(events):
             "PutUserPolicy",
             "DeleteUserPolicy",
             "CreateAccessKey",
-            "AuthorizeSecurityGroupIngress"
+            "AuthorizeSecurityGroupIngress",
+            "StopLogging",
+            "DeleteTrail",
+            "UpdateTrail",
+            "PutBucketPolicy",
+            "PutBucketAcl",
+            
         }
 
         event_name = event.get("EventName", "")

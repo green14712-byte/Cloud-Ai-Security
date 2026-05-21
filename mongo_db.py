@@ -52,6 +52,7 @@ def init_mongo():
     logs_collection.create_index([("EventTime", DESCENDING)])
     logs_collection.create_index([("SourceIP", ASCENDING)])
     logs_collection.create_index([("RiskLevel", ASCENDING)])
+    logs_collection.create_index([("ResponseActions.action_type", ASCENDING)])
 
     print("MongoDB 연결 및 인덱스 준비 완료")
 
@@ -122,6 +123,27 @@ def save_or_update_analysis(event_id, ai_result=None, risk=None):
     logs_collection.update_one(
         {"EventId": event_id},
         {"$set": update_data}
+    )
+
+
+def save_response_actions(event_id, response_actions):
+    """
+    자동 대응 결과를 해당 이벤트 문서에 저장한다.
+    같은 이벤트를 여러 번 분석할 수 있으므로, 최근 실행 결과로 ResponseActions를 갱신한다.
+    """
+    if not event_id or response_actions is None:
+        return
+
+    response_actions = to_mongo_safe(response_actions)
+
+    logs_collection.update_one(
+        {"EventId": event_id},
+        {
+            "$set": {
+                "ResponseActions": response_actions,
+                "RespondedAt": datetime.now().isoformat()
+            }
+        }
     )
 
 

@@ -23,7 +23,17 @@ important_events = {
     "CreateAccessKey",
     "DeleteAccessKey",
     "AuthorizeSecurityGroupIngress",
-    "RevokeSecurityGroupIngress"
+    "RevokeSecurityGroupIngress",
+
+    # CloudTrail 방어 회피
+    "StopLogging",
+    "DeleteTrail",
+    "UpdateTrail",
+
+    # S3 공개/삭제 관련
+    "PutBucketPolicy",
+    "PutBucketAcl",
+    "DeleteBucket"
 }
 
 seen_event_ids = set()
@@ -31,9 +41,13 @@ seen_event_ids = set()
 
 def extract_request_details(parsed_event):
     request_params = parsed_event.get("requestParameters")
+    response_elements = parsed_event.get("responseElements")
 
     if not isinstance(request_params, dict):
         request_params = {}
+
+    if not isinstance(response_elements, dict):
+        response_elements = {}
 
     details = {
         "TargetUser": request_params.get("userName"),
@@ -44,8 +58,17 @@ def extract_request_details(parsed_event):
         "FromPort": None,
         "ToPort": None,
         "IpProtocol": None,
-        "InstanceIds": None
+        "InstanceIds": None,
+        "BucketName": request_params.get("bucketName") or request_params.get("bucket"),
+        "TrailName": request_params.get("name") or request_params.get("trailName"),
+        "SecurityGroupRuleId": None,
     }
+
+    # CreateAccessKey 이벤트는 생성된 키 ID가 responseElements에 들어오는 경우가 많다.
+    access_key = response_elements.get("accessKey")
+    if isinstance(access_key, dict) and access_key.get("accessKeyId"):
+        details["AccessKeyId"] = access_key.get("accessKeyId")
+        details["TargetUser"] = details["TargetUser"] or access_key.get("userName")
 
     instances_set = request_params.get("instancesSet", {})
     if isinstance(instances_set, dict):
@@ -76,8 +99,17 @@ def extract_request_details(parsed_event):
                         if isinstance(first_range, dict):
                             details["CidrIp"] = first_range.get("cidrIp")
 
-    return details
+    # 최신 EC2 이벤트는 responseElements에 securityGroupRuleId를 제공할 수 있다.
+    sg_rule_set = response_elements.get("securityGroupRuleSet", {})
+    if isinstance(sg_rule_set, dict):
+        items = sg_rule_set.get("items", [])
+        if isinstance(items, list) and items:
+            first_rule = items[0]
+            if isinstance(first_rule, dict):
+                details["SecurityGroupRuleId"] = first_rule.get("securityGroupRuleId")
+                details["GroupId"] = details["GroupId"] or first_rule.get("groupId")
 
+    return details
 
 def collect_logs():
     collected = []
@@ -109,7 +141,10 @@ def collect_logs():
                     "FromPort": None,
                     "ToPort": None,
                     "IpProtocol": None,
-                    "InstanceIds": None
+                    "InstanceIds": None,
+                    "BucketName": None,
+                    "TrailName": None,
+                    "SecurityGroupRuleId": None
                 }
 
                 source_ip = None
@@ -138,6 +173,9 @@ def collect_logs():
                     "ToPort": details["ToPort"],
                     "IpProtocol": details["IpProtocol"],
                     "InstanceIds": details["InstanceIds"],
+                    "BucketName": details["BucketName"],
+                    "TrailName": details["TrailName"],
+                    "SecurityGroupRuleId": details["SecurityGroupRuleId"],
                     "SourceIP": source_ip,
                     "Region": region,
                     "EventSource": event.get("EventSource"),
