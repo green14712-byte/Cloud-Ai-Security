@@ -5,30 +5,25 @@ import json
 import joblib
 from sklearn.ensemble import IsolationForest
 
-# 모델 저장 파일
+
 MODEL_PATH = "iforest_model.pkl"
-
-# 누적 학습 데이터 저장 파일
 DATA_PATH = "accumulated_data.json"
+TRAINED_IDS_PATH = "trained_event_ids.json"
 
-# 최소 학습 데이터 개수
 MIN_TRAIN_SIZE = 10
 
-# Isolation Forest 모델 생성
 IForest = IsolationForest(
     contamination=0.05,
     random_state=1234
 )
 
-# 모델 학습 여부
 is_trained = False
-
-# 누적 데이터
 accumulated_data = []
+trained_event_ids = set()
 
 
 # ---------------------------------------
-# 1. 기존 누적 데이터 불러오기
+# 기존 누적 학습 데이터 불러오기
 # ---------------------------------------
 if os.path.exists(DATA_PATH):
     try:
@@ -43,7 +38,22 @@ if os.path.exists(DATA_PATH):
 
 
 # ---------------------------------------
-# 2. 기존 학습 모델 불러오기
+# 기존 학습 EventId 불러오기
+# ---------------------------------------
+if os.path.exists(TRAINED_IDS_PATH):
+    try:
+        with open(TRAINED_IDS_PATH, "r", encoding="utf-8") as f:
+            trained_event_ids = set(json.load(f))
+
+        print(f"이미 학습한 EventId {len(trained_event_ids)}개 불러오기 완료")
+
+    except json.JSONDecodeError:
+        trained_event_ids = set()
+        print("학습 EventId 파일 오류 → 새로 시작")
+
+
+# ---------------------------------------
+# 기존 학습 모델 불러오기
 # ---------------------------------------
 if os.path.exists(MODEL_PATH):
     try:
@@ -56,14 +66,7 @@ if os.path.exists(MODEL_PATH):
         print("모델 파일 오류 → 새 모델로 시작")
 
 
-# ---------------------------------------
-# 3. feature 개수 확인
-# ---------------------------------------
 def is_same_feature_size(old_data, new_features):
-    """
-    기존 누적 데이터와 새 feature의 컬럼 개수가 같은지 확인
-    feature 개수가 다르면 기존 데이터/모델을 그대로 쓰면 안 됨
-    """
     if not old_data:
         return True
 
@@ -76,81 +79,120 @@ def is_same_feature_size(old_data, new_features):
     return old_size == new_size
 
 
-# ---------------------------------------
-# 4. 누적 데이터 저장
-# ---------------------------------------
 def save_accumulated_data():
     with open(DATA_PATH, "w", encoding="utf-8") as f:
         json.dump(accumulated_data, f, indent=4)
 
 
-# ---------------------------------------
-# 5. 이상 탐지 함수
-# ---------------------------------------
-def detect_anomaly(features):
-    global is_trained, accumulated_data, IForest
+def save_trained_event_ids():
+    with open(TRAINED_IDS_PATH, "w", encoding="utf-8") as f:
+        json.dump(list(trained_event_ids), f, indent=4)
 
-    # 입력 데이터 없음
+
+def reset_model():
+    global IForest, is_trained, accumulated_data, trained_event_ids
+
+    accumulated_data = []
+    trained_event_ids = set()
+    is_trained = False
+
+    for path in [MODEL_PATH, DATA_PATH, TRAINED_IDS_PATH]:
+        if os.path.exists(path):
+            os.remove(path)
+
+    IForest = IsolationForest(
+        contamination=0.05,
+        random_state=1234
+    )
+
+    print("기존 학습 데이터, 학습 ID, 모델을 초기화했습니다.")
+
+
+def train_model(features, events=None):
+    """
+    MongoDB 누적 로그를 기반으로 모델을 학습한다.
+
+    개선점:
+    1. 반복되는 정상 패턴도 학습한다.
+    2. 단, 같은 EventId는 중복 학습하지 않는다.
+    3. 새 EventId가 추가되면 모델을 재학습한다.
+    """
+    global IForest, is_trained, accumulated_data, trained_event_ids
+
+    if features is None or len(features) == 0:
+        print("학습할 데이터가 없습니다.")
+        return False
+
+    if not is_same_feature_size(accumulated_data, features):
+        print("feature 개수가 변경되어 기존 학습 데이터와 모델을 초기화합니다.")
+        reset_model()
+
+    added_count = 0
+
+    for index, row in enumerate(features):
+        event_id = None
+
+        if events and index < len(events):
+            event_id = events[index].get("EventId")
+
+        # EventId가 있는 로그는 중복 학습 방지
+        if event_id:
+            if event_id in trained_event_ids:
+                continue
+
+            trained_event_ids.add(event_id)
+
+        # EventId가 없는 경우는 중복 판단이 어려우므로 학습에 추가
+        row_list = row.tolist()
+        accumulated_data.append(row_list)
+        added_count += 1
+
+    save_accumulated_data()
+    save_trained_event_ids()
+
+    print(f"새로 추가된 학습 데이터: {added_count}개")
+    print(f"누적 학습 데이터 수: {len(accumulated_data)}/{MIN_TRAIN_SIZE}")
+    print(f"학습 완료 EventId 수: {len(trained_event_ids)}개")
+
+    if added_count == 0:
+        print("새로 학습할 로그가 없어 모델 재학습을 건너뜁니다.")
+        return is_trained
+
+    if len(accumulated_data) < MIN_TRAIN_SIZE:
+        print("데이터 부족으로 아직 모델을 학습하지 않음")
+        return False
+
+    IForest.fit(accumulated_data)
+    is_trained = True
+
+    joblib.dump(IForest, MODEL_PATH)
+
+    print("Isolation Forest 모델 재학습 완료 및 저장")
+    return True
+
+
+def detect_anomaly(features):
+    """
+    이미 학습된 모델로 새 이벤트를 탐지한다.
+    이 함수에서는 학습 데이터를 추가하지 않는다.
+    """
+    global is_trained, IForest
+
     if features is None or len(features) == 0:
         return []
 
-    # feature 개수가 바뀐 경우
-    # 예: IP feature 추가 전 데이터와 추가 후 데이터가 섞이는 문제 방지
-    if not is_same_feature_size(accumulated_data, features):
-        print("feature 개수가 변경되어 기존 학습 데이터와 모델을 초기화합니다.")
-
-        accumulated_data = []
-        is_trained = False
-
-        if os.path.exists(MODEL_PATH):
-            os.remove(MODEL_PATH)
-
-        if os.path.exists(DATA_PATH):
-            os.remove(DATA_PATH)
-
-        IForest = IsolationForest(
-            contamination=0.05,
-            random_state=1234
-        )
-
-    # 새 데이터를 누적 데이터에 추가
-    for row in features:
-        row_list = row.tolist()
-
-        # 완전히 같은 feature는 중복 저장하지 않음
-        if row_list not in accumulated_data:
-            accumulated_data.append(row_list)
-
-    # 누적 데이터 저장
-    save_accumulated_data()
-
-    print(f"누적 데이터 수: {len(accumulated_data)}/{MIN_TRAIN_SIZE}")
-
-    # 아직 학습 전이면 데이터가 충분할 때 학습
     if not is_trained:
-        if len(accumulated_data) >= MIN_TRAIN_SIZE:
-            IForest.fit(accumulated_data)
-            is_trained = True
+        print("모델이 아직 학습되지 않아 이상 탐지를 수행할 수 없습니다.")
+        return []
 
-            # 학습 모델 저장
-            joblib.dump(IForest, MODEL_PATH)
-
-            print("모델 학습 완료 및 저장")
-        else:
-            print("데이터 부족으로 아직 학습하지 않음")
-            return []
-
-    # 학습된 모델로 예측
     preds = IForest.predict(features)
-
-    # 이상 점수 계산
     scores = IForest.decision_function(features)
 
     results = []
 
     for pred, score in zip(preds, scores):
         results.append({
-            "is_anomaly": pred == -1,  # -1이면 이상, 1이면 정상
+            "is_anomaly": bool(pred == -1),
             "score": round(float(score), 4)
         })
 

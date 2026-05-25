@@ -52,6 +52,8 @@ def init_mongo():
     logs_collection.create_index([("EventTime", DESCENDING)])
     logs_collection.create_index([("SourceIP", ASCENDING)])
     logs_collection.create_index([("RiskLevel", ASCENDING)])
+    logs_collection.create_index([("AttackType", ASCENDING)])
+    logs_collection.create_index([("ResponseUpdatedAt", DESCENDING)])
 
     print("MongoDB 연결 및 인덱스 준비 완료")
 
@@ -92,9 +94,16 @@ def save_logs_to_mongo(events):
     return added_count
 
 
-def save_or_update_analysis(event_id, ai_result=None, risk=None):
+def save_or_update_analysis(
+    event_id,
+    ai_result=None,
+    risk=None,
+    attack_type=None,
+    response_actions=None
+):
     """
-    이미 저장된 로그에 AI 분석 결과와 위험도 평가 결과를 업데이트한다.
+    이미 저장된 로그에 AI 분석 결과, 위험도 평가 결과,
+    공격 유형, 자동 대응 결과를 업데이트한다.
     """
     if not event_id:
         return
@@ -103,6 +112,7 @@ def save_or_update_analysis(event_id, ai_result=None, risk=None):
         "AnalyzedAt": datetime.now().isoformat()
     }
 
+    # AI 분석 결과 저장
     if ai_result is not None:
         ai_result = to_mongo_safe(ai_result)
 
@@ -110,12 +120,38 @@ def save_or_update_analysis(event_id, ai_result=None, risk=None):
         update_data["AIStatus"] = "ANOMALY" if ai_result.get("is_anomaly") else "NORMAL"
         update_data["AIScore"] = ai_result.get("score")
 
+    # 위험도 결과 저장
     if risk is not None:
         risk = to_mongo_safe(risk)
 
         update_data["RiskScore"] = risk.get("risk_score")
         update_data["RiskLevel"] = risk.get("risk_level")
         update_data["RiskReasons"] = risk.get("reasons")
+        update_data["RiskDetail"] = risk
+
+    # 공격 유형 저장
+    if attack_type is not None:
+        update_data["AttackType"] = attack_type
+
+    # 자동 대응 결과 저장
+    if response_actions is not None:
+        response_actions = to_mongo_safe(response_actions)
+
+        update_data["ResponseActions"] = response_actions
+        update_data["ResponseUpdatedAt"] = datetime.now().isoformat()
+
+        statuses = []
+        actions = []
+
+        for item in response_actions:
+            if isinstance(item, dict):
+                if item.get("Status"):
+                    statuses.append(item.get("Status"))
+                if item.get("Action"):
+                    actions.append(item.get("Action"))
+
+        update_data["ResponseStatuses"] = statuses
+        update_data["ResponseActionNames"] = actions
 
     update_data = to_mongo_safe(update_data)
 

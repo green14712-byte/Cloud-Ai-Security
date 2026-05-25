@@ -1,1 +1,1 @@
-function ec2 { ssh -i "C:\Users\LG\Desktop\cloud-ai-security\cap-server-key-pyun.pem" ubuntu@54.253.69.124 }
+function ec2 { ssh -i "C:\Users\LG\Desktop\cloud-ai-security\cap-pyun.pem" ubuntu@43.200.82.136 }
